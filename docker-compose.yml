@@ -40,14 +40,10 @@ services:
       # Admin bruges KUN til migrate + security.sql
       ADMIN_DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER:-hp_admin}:${POSTGRES_ADMIN_PASSWORD:-hp_admin_pw}@db:5432/${POSTGRES_DB:-house_passport}?schema=public
       REDIS_URL: redis://redis:6379
+      DEMO_MODE: "${DEMO_MODE:-true}"   # demo-forside med live data; false i produktion
       PORT: 3000
     ports:
       - "3000:3000"
-    # Bootstrap som admin (migrate + RLS), start derefter appen som hp_app
-    command: >
-      sh -c "DATABASE_URL=$$ADMIN_DATABASE_URL npx prisma db push --skip-generate &&
-             DATABASE_URL=$$ADMIN_DATABASE_URL npx prisma db execute --file prisma/sql/security.sql --schema prisma/schema.prisma &&
-             node dist/main.js"
 
 volumes:
   hp_pgdata:

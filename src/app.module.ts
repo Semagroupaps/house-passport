@@ -7,6 +7,7 @@ import { PropertiesModule } from './properties/properties.module';
 import { DocumentsModule } from './documents/documents.module';
 import { IdentityModule } from './identity/identity.module';
 import { HealthModule } from './health/health.module';
+import { DemoModule } from './demo/demo.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
 @Module({
@@ -22,6 +23,8 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
     DocumentsModule,
     IdentityModule,
     HealthModule,
+    // Demo-session kun når DEMO_MODE=true (skal være false i produktion)
+    ...(process.env.DEMO_MODE === 'true' ? [DemoModule] : []),
   ],
 })
 export class AppModule implements NestModule {

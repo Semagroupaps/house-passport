@@ -41,6 +41,7 @@ house-passport/
 │   ├── properties/            · bolig-onboarding, listning, ejerskifte
 │   ├── documents/             · upload + async ingestion-pipeline
 │   ├── health/                · /health (DB + Redis) til health checks
+│   ├── demo/                  · demo-session (kun DEMO_MODE) — seeder live data
 │   └── common/                · guards mv.
 ├── public/                    · forside (statisk UI serveret på /)
 ├── test/                      · RLS-isolation, skrive-policies, kryptering, matchning
@@ -65,7 +66,10 @@ appen, der forbinder som den begrænsede rolle hp_app.
 
 Åbn **http://localhost:3000** i browseren — forsiden viser House Passport-
 brugerfladen (dashboard) med en live status-indikator, der kalder `/health`.
-API'et lever under `/v1`.
+API'et lever under `/v1`. Med `DEMO_MODE=true` viser **Start demo**-knappen
+en rigtig bolig: backenden opretter en verificeret demo-bruger med dokumenter,
+og forsiden tegner dem live (uploads kører gennem den asynkrone pipeline).
+Deaktivér `DEMO_MODE` i produktion.
 
 ### Lokalt (udvikling)
 
@@ -88,7 +92,8 @@ npm run start:dev                # API på :3000
 
 | Metode | Rute | Handling |
 |---|---|---|
-| GET  | / | Forside / visuel brugerflade (House Passport-dashboard) |
+| GET  | / | Forside / visuel brugerflade (henter live data fra API'et) |
+| POST | /v1/dev/session | Demo-session (kun DEMO_MODE) — opretter bruger + seedet bolig |
 | GET  | /health | Status for DB + Redis (til Coolify health check) |
 | GET  | /v1/properties | List boliger (RLS-filtreret) |
 | POST | /v1/properties | Onboard bolig fra { "address": "..." } |
@@ -141,6 +146,31 @@ Repoet er Coolify-klart med PostgreSQL (pgvector) og Redis.
 opret separate Postgres- og Redis-ressourcer i Coolify, og sæt `DATABASE_URL`,
 `ADMIN_DATABASE_URL` og `REDIS_URL` som env. Kør bootstrap (`db:push` + `db:security`)
 som et release-step.
+
+
+### Coolify: nødvendige miljøvariabler
+
+Uanset om du deployer via Dockerfile eller Docker Compose, skal disse sættes i Coolify:
+
+| Variabel | Eksempel / krav |
+|---|---|
+| `DATABASE_URL` | `postgresql://hp_app:hp_app_pw@<db-host>:5432/house_passport?schema=public` (appen — RLS) |
+| `ADMIN_DATABASE_URL` | admin/**superuser**-forbindelse — bruges til bootstrap (skema + RLS + rolle + extension) |
+| `REDIS_URL` | `redis://<redis-host>:6379` |
+| `DEMO_MODE` | `true` for live demo-forside (sæt `false` i produktion) |
+| `PORT` | `3000` |
+
+Containeren bootstrapper sig selv ved opstart (entrypoint): den kører `prisma db push`
++ `security.sql` som admin (med retry til databasen er klar) og starter derefter appen
+som `hp_app`. Health check path: `/health`.
+
+> **To krav til databasen:** (1) `ADMIN_DATABASE_URL`-brugeren skal kunne `CREATE ROLE`
+> og `CREATE EXTENSION` (typisk superuser), da `security.sql` opretter `hp_app`-rollen og
+> `vector`-extensionen. (2) **pgvector skal være tilgængelig.** Den medfølgende
+> `docker-compose.yml` opfylder begge (pgvector-image + superuser). Bruger du en separat
+> managed Postgres i Coolify, så sørg for pgvector og tilstrækkelige rettigheder — ellers
+> er **Docker Compose-ressourcen den nemmeste vej** (alt selvindeholdt).
+
 
 ---
 

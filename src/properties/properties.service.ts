@@ -10,9 +10,16 @@ export class PropertiesService {
     @Inject(REGISTRY_ADAPTER) private readonly registry: RegistryAdapter,
   ) {}
 
-  /** Returnerer KUN boliger, som RLS tillader for den givne kontekst. */
+  /** Returnerer KUN boliger, som RLS tillader — beriget med ejerens verificeret-flag. */
   async listVisible(ctx: TenantContext) {
-    return this.tenant.withTenant(ctx, (tx) => tx.property.findMany());
+    return this.tenant.withTenant(ctx, async (tx) => {
+      const props = await tx.property.findMany();
+      const owns = await tx.ownershipPeriod.findMany({
+        where: { personId: ctx.personId as string, validTo: null },
+      });
+      const verifiedByProperty = new Map(owns.map((o: any) => [o.propertyId, o.mitidVerified]));
+      return props.map((p: any) => ({ ...p, verified: verifiedByProperty.get(p.id) ?? false }));
+    });
   }
 
   /** Returnerer KUN dokumenter, som RLS tillader (ejerskab eller læse-grant). */

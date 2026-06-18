@@ -1,0 +1,121 @@
+// House Passport — kerne-domænemodel (Lag 1)
+// Bolig er den varige rod; ejerskab er en tidsrelation; al deling via AccessGrant.
+// RLS-policies og partielt unikt indeks ligger i prisma/sql/security.sql
+// (Prisma udtrykker ikke RLS/partielle indekser i schemaet).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Professionel organisation = klassisk tenant (mægler/bank/forsikring/håndværker).
+model Organization {
+  id          String           @id @default(uuid()) @db.Uuid
+  type        String // 'maegler' | 'bank' | 'forsikring' | 'haandvaerker' | 'administrator'
+  name        String
+  branding    Json             @default("{}")
+  isIsolated  Boolean          @default(false) @map("is_isolated")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  members     OrgMembership[]
+  @@map("organization")
+}
+
+/// En fysisk person (kan være boligejer og/eller medlem af organisationer).
+model Person {
+  id              String            @id @default(uuid()) @db.Uuid
+  displayName     String?           @map("display_name")
+  isMitidVerified Boolean           @default(false) @map("is_mitid_verified")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  memberships     OrgMembership[]
+  ownerships      OwnershipPeriod[]
+  grantsGiven     AccessGrant[]     @relation("grantedBy")
+  @@map("person")
+}
+
+/// Kobler person til organisation med en RBAC-rolle.
+model OrgMembership {
+  id        String       @id @default(uuid()) @db.Uuid
+  orgId     String       @map("org_id") @db.Uuid
+  personId  String       @map("person_id") @db.Uuid
+  role      String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  person    Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+  @@unique([orgId, personId])
+  @@map("org_membership")
+}
+
+/// Bolig — den varige rod. IKKE tenant-ejet. Adgang styres via ejerskab + grants.
+model Property {
+  id           String            @id @default(uuid()) @db.Uuid
+  bfeNumber    String            @unique @map("bfe_number")
+  address      String
+  bbrSnapshot  Json?             @map("bbr_snapshot")
+  energyLabel  String?           @map("energy_label")
+  propertyType String?           @map("property_type")
+  buildYear    Int?              @map("build_year")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  ownerships   OwnershipPeriod[]
+  grants       AccessGrant[]
+  documents    Document[]
+  @@map("property")
+}
+
+/// Tidsbegrænset ejerskabsrelation. Højst én aktiv (valid_to IS NULL) pr. bolig
+/// — håndhævet af et partielt unikt indeks i security.sql.
+model OwnershipPeriod {
+  id            String   @id @default(uuid()) @db.Uuid
+  propertyId    String   @map("property_id") @db.Uuid
+  personId      String   @map("person_id") @db.Uuid
+  validFrom     DateTime @map("valid_from") @db.Date
+  validTo       DateTime? @map("valid_to") @db.Date
+  mitidVerified Boolean  @default(false) @map("mitid_verified")
+  property      Property @relation(fields: [propertyId], references: [id])
+  person        Person   @relation(fields: [personId], references: [id])
+  @@index([propertyId])
+  @@map("ownership_period")
+}
+
+/// Hjertet i al deling: scoped, tidsbegrænset, samtykkebaseret adgang til en bolig.
+model AccessGrant {
+  id          String    @id @default(uuid()) @db.Uuid
+  propertyId  String    @map("property_id") @db.Uuid
+  subjectType String    @map("subject_type") // 'person' | 'organization'
+  subjectId   String    @map("subject_id") @db.Uuid
+  scope       String[] // fx {documents:read, maintenance:read}
+  permission  String // 'read' | 'write' | 'admin'
+  validFrom   DateTime  @default(now()) @map("valid_from")
+  validTo     DateTime? @map("valid_to")
+  grantedBy   String    @map("granted_by") @db.Uuid
+  consentId   String?   @map("consent_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  property    Property  @relation(fields: [propertyId], references: [id])
+  grantor     Person    @relation("grantedBy", fields: [grantedBy], references: [id])
+  @@index([subjectType, subjectId, propertyId])
+  @@index([propertyId])
+  @@map("access_grant")
+}
+
+/// Dokument — tilhører altid en bolig (aldrig direkte en bruger).
+/// (Hash-partitionering på property_id påføres i en senere produktionsmigration.)
+model Document {
+  id               String   @id @default(uuid()) @db.Uuid
+  propertyId       String   @map("property_id") @db.Uuid
+  filename         String?
+  category         String?
+  source           String? // 'manual' | 'email' | 'craftsman' | 'registry'
+  isTransferable   Boolean  @default(true) @map("is_transferable")
+  aiMetadata       Json?    @map("ai_metadata")
+  s3Key            String   @map("s3_key")
+  encryptionKeyRef String   @map("encryption_key_ref")
+  processingStatus String   @default("pending") @map("processing_status")
+  idempotencyKey   String?  @unique @map("idempotency_key")
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  property         Property @relation(fields: [propertyId], references: [id])
+  @@index([propertyId])
+  @@map("document")
+}

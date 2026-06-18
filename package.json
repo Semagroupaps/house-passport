@@ -1,0 +1,35 @@
+{
+  "name": "house-passport-api",
+  "version": "0.1.0",
+  "description": "House Passport — Lag 1: sikkerheds- & multi-tenant-fundament",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start:dev": "ts-node src/main.ts",
+    "prisma:generate": "prisma generate",
+    "db:security": "prisma db execute --file prisma/sql/security.sql --schema prisma/schema.prisma",
+    "db:bootstrap": "npm run db:push && npm run db:security",
+    "test:isolation": "jest --config test/jest-e2e.json",
+    "test:unit": "jest --config test/jest-unit.json",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.4",
+    "@nestjs/core": "^10.4.4",
+    "@nestjs/platform-express": "^10.4.4",
+    "@prisma/client": "^5.20.0",
+    "ioredis": "^5.4.1",
+    "prisma": "^5.20.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/node": "^22.7.4",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.2"
+  }
+}

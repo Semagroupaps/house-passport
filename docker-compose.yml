@@ -1,0 +1,54 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-house_passport}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-hp_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-hp_admin_pw}
+    volumes:
+      - hp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_ADMIN_USER:-hp_admin}", "-d", "${POSTGRES_DB:-house_passport}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - hp_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Appen kører som hp_app (NOSUPERUSER) -> RLS gælder
+      DATABASE_URL: postgresql://hp_app:hp_app_pw@db:5432/${POSTGRES_DB:-house_passport}?schema=public
+      # Admin bruges KUN til migrate + security.sql
+      ADMIN_DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER:-hp_admin}:${POSTGRES_ADMIN_PASSWORD:-hp_admin_pw}@db:5432/${POSTGRES_DB:-house_passport}?schema=public
+      REDIS_URL: redis://redis:6379
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    # Bootstrap som admin (migrate + RLS), start derefter appen som hp_app
+    command: >
+      sh -c "DATABASE_URL=$$ADMIN_DATABASE_URL npx prisma db push --skip-generate &&
+             DATABASE_URL=$$ADMIN_DATABASE_URL npx prisma db execute --file prisma/sql/security.sql --schema prisma/schema.prisma &&
+             node dist/main.js"
+
+volumes:
+  hp_pgdata:
+  hp_redisdata:

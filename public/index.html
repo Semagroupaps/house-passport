@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>House Passport</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAFAF9;--surface:#fff;--n100:#F4F4F3;--n200:#E7E7E6;--n300:#D6D6D4;
+    --n400:#A8A8A5;--n500:#787875;--n600:#57574F;--ink:#1A1A18;
+    --blue:#355CB5;--blueSubtle:#EAF0FB;--green:#1E5641;--greenSubtle:#E8F1ED;
+    --warn:#9A5B1A;--warnSubtle:#FBF1E3;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+  .card{background:var(--surface);border:1px solid var(--n200);border-radius:12px;box-shadow:0 1px 2px rgba(26,26,24,.04),0 1px 3px rgba(26,26,24,.05)}
+  .topbar{border-bottom:1px solid var(--n200);background:var(--surface)}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;letter-spacing:-.01em}
+  .logo{width:28px;height:28px;border-radius:7px;background:var(--ink);display:flex;align-items:center;justify-content:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--n600);border:1px solid var(--n200);border-radius:999px;padding:6px 12px;background:var(--bg)}
+  .dot{width:8px;height:8px;border-radius:999px;background:var(--n300)}
+  .dot.up{background:var(--green)}.dot.down{background:#A8321F}
+  .section-label{font-size:12px;font-weight:600;color:var(--n500);text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px}
+  .verified{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--green);background:var(--greenSubtle);padding:3px 9px;border-radius:999px}
+  .chip{font-size:12px;font-weight:500;color:var(--blue);background:var(--blueSubtle);padding:3px 9px;border-radius:6px}
+  .chip.muted{color:var(--n600);background:var(--n100)}
+  .grid2{display:flex;gap:24px;align-items:stretch}
+  .stats{display:flex;gap:16px}
+  .stat{flex:1;padding:16px 18px}
+  .stat .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1}
+  .stat .l{font-size:12.5px;color:var(--n500);margin-top:6px}
+  .row{display:flex;align-items:center;gap:14px;padding:14px 18px}
+  .row+.row{border-top:1px solid var(--n100)}
+  .ic{width:36px;height:36px;border-radius:8px;background:var(--n100);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--n600)}
+  .muted{color:var(--n500)}.small{font-size:12.5px}
+  h2{font-size:20px;font-weight:600;letter-spacing:-.02em}
+  .meta{display:flex;gap:28px;flex-wrap:wrap;margin-top:16px}
+  .meta .k{font-size:12px;color:var(--n500);margin-bottom:3px}
+  .meta .vv{font-size:14.5px;font-weight:500}
+  .bar{height:8px;background:var(--n100);border-radius:999px;overflow:hidden}
+  .bar > i{display:block;height:100%;background:var(--green);border-radius:999px}
+  footer{color:var(--n400);font-size:12.5px;text-align:center;padding:32px}
+  svg{display:block}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="wrap">
+      <div class="brand">
+        <span class="logo">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+        </span>
+        House Passport
+      </div>
+      <div class="pill" id="status">
+        <span class="dot" id="dot-db"></span> API
+        <span class="dot" id="dot-redis" style="margin-left:8px"></span> Redis
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap" style="padding-top:32px;display:flex;flex-direction:column;gap:24px">
+
+    <!-- Bolig + score -->
+    <div class="grid2">
+      <div class="card" style="flex:1;display:flex;overflow:hidden">
+        <div style="width:168px;flex-shrink:0;background:linear-gradient(135deg,var(--n100),var(--n200));display:flex;align-items:center;justify-content:center">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#A8A8A5" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+        </div>
+        <div style="padding:20px 24px;flex:1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <h2>Æblevej 12</h2>
+            <span class="verified">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1E5641" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+              Verificeret
+            </span>
+          </div>
+          <div class="muted small" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#787875" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            8000 Aarhus
+          </div>
+          <div class="meta">
+            <div><div class="k">Boligtype</div><div class="vv">Parcelhus</div></div>
+            <div><div class="k">Areal</div><div class="vv">142 m²</div></div>
+            <div><div class="k">Opført</div><div class="vv">1974</div></div>
+            <div><div class="k">Vurdering</div><div class="vv">3.240.000 kr.</div></div>
+            <div><div class="k">Energimærke</div><div class="vv" style="color:var(--green)">C</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="width:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:10px">
+        <div style="position:relative;width:132px;height:132px">
+          <svg width="132" height="132" style="transform:rotate(-90deg)">
+            <circle cx="66" cy="66" r="58" fill="none" stroke="#E7E7E6" stroke-width="8"/>
+            <circle cx="66" cy="66" r="58" fill="none" stroke="#1E5641" stroke-width="8" stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="102"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <span style="font-size:30px;font-weight:600;letter-spacing:-.02em">72</span>
+            <span class="small muted">/ 100</span>
+          </div>
+        </div>
+        <div style="text-align:center">
+          <div class="small" style="font-weight:500">Vedligeholdelsesscore</div>
+          <div class="small muted" style="margin-top:2px">God stand · 2 opgaver</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hurtig status -->
+    <div>
+      <p class="section-label">Hurtig status</p>
+      <div class="stats">
+        <div class="card stat"><div class="v">2</div><div class="l">Kommende opgaver</div></div>
+        <div class="card stat"><div class="v" style="color:var(--green)">3</div><div class="l">Aktive garantier</div></div>
+        <div class="card stat"><div class="v" style="color:var(--warn)">5</div><div class="l">Manglende dokumenter</div></div>
+        <div class="card stat"><div class="v" style="color:var(--warn)">1</div><div class="l">Udløbende serviceaftaler</div></div>
+      </div>
+    </div>
+
+    <!-- Dokumenter + dokumentationsgrad -->
+    <div class="grid2" style="align-items:flex-start">
+      <div class="card" style="flex:1;padding:8px 0">
+        <p class="section-label" style="padding:12px 18px 8px">Seneste dokumenter</p>
+        <div class="row">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          <div style="flex:1"><div class="small" style="font-weight:500">Elinstallationsrapport 2023.pdf</div><div class="small muted">Aarhus El ApS</div></div>
+          <span class="chip">El</span><span class="chip muted">Garanti til 2028</span><span class="verified">Verificeret</span>
+        </div>
+        <div class="row">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          <div style="flex:1"><div class="small" style="font-weight:500">Tagrapport_HCTag.pdf</div><div class="small muted">HC Tag ApS</div></div>
+          <span class="chip">Tag</span><span class="chip muted">Garanti til 2033</span><span class="verified">Verificeret</span>
+        </div>
+        <div class="row">
+          <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          <div style="flex:1"><div class="small" style="font-weight:500">Foto_tagrygning.jpg</div><div class="small muted">Manuel upload</div></div>
+          <span class="chip" style="color:var(--warn);background:var(--warnSubtle)">Behandles…</span>
+        </div>
+      </div>
+
+      <div class="card" style="width:260px;padding:22px">
+        <div class="small" style="font-weight:600;margin-bottom:4px">Dokumentationsgrad</div>
+        <div class="small muted" style="margin-bottom:16px">Jo mere komplet, jo hurtigere et salg.</div>
+        <div style="font-size:28px;font-weight:600;letter-spacing:-.02em;margin-bottom:8px">64%</div>
+        <div class="bar"><i style="width:64%"></i></div>
+        <div class="small muted" style="margin-top:12px">Forbind din mail, så finder vi resten automatisk.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    House Passport · fundament · API på <code>/v1</code> · health på <code>/health</code>
+  </footer>
+
+  <script>
+    // Live status: kalder backendens /health og viser DB + Redis
+    fetch('/health').then(function(r){return r.json()}).then(function(d){
+      var db=document.getElementById('dot-db'), rd=document.getElementById('dot-redis');
+      db.className='dot '+(d.db==='up'?'up':'down');
+      rd.className='dot '+(d.redis==='up'?'up':(d.redis==='disabled'?'':'down'));
+    }).catch(function(){
+      document.getElementById('dot-db').className='dot down';
+    });
+  </script>
+</body>
+</html>

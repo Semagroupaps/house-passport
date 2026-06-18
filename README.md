@@ -42,6 +42,7 @@ house-passport/
 │   ├── documents/             · upload + async ingestion-pipeline
 │   ├── health/                · /health (DB + Redis) til health checks
 │   └── common/                · guards mv.
+├── public/                    · forside (statisk UI serveret på /)
 ├── test/                      · RLS-isolation, skrive-policies, kryptering, matchning
 ├── .github/workflows/ci.yml   · typecheck + tests som blokerende gate
 ├── docs/                      · komplet analyse- og designgrundlag (Trin 1–17)
@@ -60,8 +61,11 @@ docker compose up --build
 ```
 
 api-servicen migrerer databasen, påfører RLS som admin og starter derefter
-appen, der forbinder som den begrænsede rolle hp_app. API'et kører på
-http://localhost:3000.
+appen, der forbinder som den begrænsede rolle hp_app.
+
+Åbn **http://localhost:3000** i browseren — forsiden viser House Passport-
+brugerfladen (dashboard) med en live status-indikator, der kalder `/health`.
+API'et lever under `/v1`.
 
 ### Lokalt (udvikling)
 
@@ -84,6 +88,7 @@ npm run start:dev                # API på :3000
 
 | Metode | Rute | Handling |
 |---|---|---|
+| GET  | / | Forside / visuel brugerflade (House Passport-dashboard) |
 | GET  | /health | Status for DB + Redis (til Coolify health check) |
 | GET  | /v1/properties | List boliger (RLS-filtreret) |
 | POST | /v1/properties | Onboard bolig fra { "address": "..." } |

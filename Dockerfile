@@ -1,25 +1,21 @@
-# ---- Build ----
-FROM node:20-slim AS builder
+# Single-stage build på Debian-slim — enklest og mest robust ift. Prisma-engine.
+FROM node:20-slim
+
+# openssl + ca-certificates: nødvendige for Prisma-engine og HTTPS-downloads
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
+
+# Installér ALLE afhængigheder (inkl. dev) — TypeScript/Prisma bruges til build.
+# NB: NODE_ENV sættes FØRST efter build, ellers springer npm ci devDeps over.
 COPY package*.json ./
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000
-COPY . .
-RUN npx prisma generate && npm run build
 
-# ---- Runtime ----
-FROM node:20-slim AS runner
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+# Kopiér kildekode og byg
+COPY . .
+RUN npx prisma generate && npm run build && chmod +x entrypoint.sh
+
 ENV NODE_ENV=production
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/entrypoint.sh ./entrypoint.sh
-RUN chmod +x entrypoint.sh
 EXPOSE 3000
 CMD ["sh", "/app/entrypoint.sh"]

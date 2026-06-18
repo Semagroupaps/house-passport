@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>House Passport</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAFAF9;--surface:#fff;--n100:#F4F4F3;--n200:#E7E7E6;--n300:#D6D6D4;
+    --n400:#A8A8A5;--n500:#787875;--n600:#57574F;--ink:#1A1A18;
+    --blue:#355CB5;--blueSubtle:#EAF0FB;--green:#1E5641;--greenSubtle:#E8F1ED;
+    --warn:#9A5B1A;--warnSubtle:#FBF1E3;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 32px}
+  .card{background:var(--surface);border:1px solid var(--n200);border-radius:12px;box-shadow:0 1px 2px rgba(26,26,24,.04),0 1px 3px rgba(26,26,24,.05)}
+  .topbar{border-bottom:1px solid var(--n200);background:var(--surface)}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;letter-spacing:-.01em}
+  .logo{width:28px;height:28px;border-radius:7px;background:var(--ink);display:flex;align-items:center;justify-content:center}
+  .right{display:flex;align-items:center;gap:12px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--n600);border:1px solid var(--n200);border-radius:999px;padding:6px 12px;background:var(--bg)}
+  .dot{width:8px;height:8px;border-radius:999px;background:var(--n300)}
+  .dot.up{background:var(--green)}.dot.down{background:#A8321F}
+  .btn{font-family:var(--font);font-size:13.5px;font-weight:500;padding:8px 14px;border-radius:8px;cursor:pointer;border:1px solid var(--n200);background:var(--surface);color:var(--ink)}
+  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  .section-label{font-size:12px;font-weight:600;color:var(--n500);text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px}
+  .verified{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:500;color:var(--green);background:var(--greenSubtle);padding:3px 9px;border-radius:999px}
+  .chip{font-size:12px;font-weight:500;color:var(--blue);background:var(--blueSubtle);padding:3px 9px;border-radius:6px}
+  .chip.muted{color:var(--n600);background:var(--n100)}
+  .chip.warn{color:var(--warn);background:var(--warnSubtle)}
+  .grid2{display:flex;gap:24px;align-items:stretch}
+  .stats{display:flex;gap:16px}
+  .stat{flex:1;padding:16px 18px}
+  .stat .v{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1}
+  .stat .l{font-size:12.5px;color:var(--n500);margin-top:6px}
+  .row{display:flex;align-items:center;gap:14px;padding:14px 18px}
+  .row+.row{border-top:1px solid var(--n100)}
+  .ic{width:36px;height:36px;border-radius:8px;background:var(--n100);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--n600)}
+  .muted{color:var(--n500)}.small{font-size:12.5px}
+  h2{font-size:20px;font-weight:600;letter-spacing:-.02em}
+  .meta{display:flex;gap:28px;flex-wrap:wrap;margin-top:16px}
+  .meta .k{font-size:12px;color:var(--n500);margin-bottom:3px}
+  .meta .vv{font-size:14.5px;font-weight:500}
+  footer{color:var(--n400);font-size:12.5px;text-align:center;padding:32px}
+  .empty{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:64px 0}
+  svg{display:block}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="wrap">
+      <div class="brand">
+        <span class="logo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+        House Passport
+      </div>
+      <div class="right">
+        <span class="pill"><span class="dot" id="dot-db"></span>API<span class="dot" id="dot-redis" style="margin-left:6px"></span>Redis</span>
+        <span id="auth-area"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap" id="app" style="padding-top:32px"></div>
+
+  <footer>House Passport · live mod API'et · <code>/v1</code> · health <code>/health</code></footer>
+
+<script>
+let token = localStorage.getItem('hp_token');
+const H = () => token ? { 'Authorization': 'Bearer ' + token } : {};
+const el = (id) => document.getElementById(id);
+
+function renderAuthArea(){
+  el('auth-area').innerHTML = token
+    ? '<button class="btn" onclick="logout()">Log ud</button>'
+    : '<button class="btn primary" onclick="startDemo()">Start demo</button>';
+}
+
+async function startDemo(){
+  try{
+    const r = await fetch('/v1/dev/session', { method:'POST' });
+    if(!r.ok){
+      const msg = r.status===404
+        ? 'Demo er ikke aktiveret — sæt <code>DEMO_MODE=true</code> i serverens miljø og redeploy.'
+        : 'Demo fejlede (HTTP '+r.status+'). Tjek at <code>ADMIN_DATABASE_URL</code> er sat, og at databasen er bootstrappet (<a href="/health">/health</a>).';
+      el('app').innerHTML = '<div class="card empty"><div>'+msg+'</div></div>';
+      return;
+    }
+    const d = await r.json();
+    token = d.token; localStorage.setItem('hp_token', token);
+    renderAuthArea(); load();
+  }catch(e){
+    el('app').innerHTML = '<div class="card empty"><div>Kunne ikke nå serveren (<code>/v1/dev/session</code>).</div></div>';
+  }
+}
+function logout(){ token=null; localStorage.removeItem('hp_token'); renderAuthArea(); renderLanding(); }
+
+function renderLanding(){
+  el('app').innerHTML =
+    '<div class="card empty">'+
+      '<div class="ic" style="width:52px;height:52px;border-radius:13px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#A8A8A5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></div>'+
+      '<h2>Boligens digitale servicebog</h2>'+
+      '<div class="muted" style="max-width:420px">Saml dokumentation, garantier, vedligehold og verificerede ejerdata ét sted. Start en demo for at se en rigtig bolig hentet fra API\'et.</div>'+
+      '<button class="btn primary" onclick="startDemo()">Start demo</button>'+
+    '</div>';
+}
+
+function fmt(p){
+  const bbr = p.bbrSnapshot || {};
+  return { area: bbr.areaM2 ? bbr.areaM2+' m²' : '–', value: bbr.estimatedValue || '–' };
+}
+
+async function load(){
+  if(!token){ renderLanding(); return; }
+  let props=[];
+  try{ const r=await fetch('/v1/properties',{headers:H()}); if(r.ok) props=await r.json(); }catch(e){}
+  if(!props.length){
+    el('app').innerHTML='<div class="card empty"><h2>Ingen bolig endnu</h2><div class="muted">Onboard en bolig via API\'et (<code>POST /v1/properties</code>).</div></div>';
+    return;
+  }
+  const p = props[0];
+  let docs=[];
+  try{ const r=await fetch('/v1/properties/'+p.id+'/documents',{headers:H()}); if(r.ok) docs=await r.json(); }catch(e){}
+  renderDashboard(p, docs);
+}
+
+function ring(pct){
+  const off = 364.4 - (pct/100)*364.4;
+  return '<div style="position:relative;width:132px;height:132px"><svg width="132" height="132" style="transform:rotate(-90deg)">'+
+    '<circle cx="66" cy="66" r="58" fill="none" stroke="#E7E7E6" stroke-width="8"/>'+
+    '<circle cx="66" cy="66" r="58" fill="none" stroke="#1E5641" stroke-width="8" stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="'+off+'" style="transition:stroke-dashoffset .8s cubic-bezier(.2,0,0,1)"/>'+
+    '</svg><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">'+
+    '<span style="font-size:30px;font-weight:600;letter-spacing:-.02em">'+pct+'</span><span class="small muted">/ 100</span></div></div>';
+}
+
+function docIcon(){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>'; }
+
+function renderDashboard(p, docs){
+  const f = fmt(p);
+  const total = docs.length;
+  const processed = docs.filter(d=>d.processingStatus==='processed').length;
+  const pending = total - processed;
+  const pct = total ? Math.round(processed/total*100) : 0;
+
+  const docRows = docs.map(d =>
+    '<div class="row"><span class="ic">'+docIcon()+'</span>'+
+    '<div style="flex:1;min-width:0"><div class="small" style="font-weight:500">'+(d.filename||'Dokument')+'</div>'+
+    '<div class="small muted">'+(d.source||'')+'</div></div>'+
+    (d.processingStatus==='processed'
+       ? '<span class="chip">'+(d.category||'Behandlet')+'</span>'
+       : '<span class="chip warn">Behandles…</span>')+
+    '</div>'
+  ).join('') || '<div class="row"><span class="muted small">Ingen dokumenter endnu.</span></div>';
+
+  el('app').innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:24px">'+
+      '<div class="grid2">'+
+        '<div class="card" style="flex:1;display:flex;overflow:hidden">'+
+          '<div style="width:168px;flex-shrink:0;background:linear-gradient(135deg,var(--n100),var(--n200));display:flex;align-items:center;justify-content:center"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#A8A8A5" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></div>'+
+          '<div style="padding:20px 24px;flex:1">'+
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><h2>'+(p.address||'Bolig')+'</h2>'+
+            (p.verified ? '<span class="verified"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1E5641" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>Verificeret</span>' : '')+
+            '</div>'+
+            '<div class="meta">'+
+              '<div><div class="k">Boligtype</div><div class="vv">'+(p.propertyType||'–')+'</div></div>'+
+              '<div><div class="k">Areal</div><div class="vv">'+f.area+'</div></div>'+
+              '<div><div class="k">Opført</div><div class="vv">'+(p.buildYear||'–')+'</div></div>'+
+              '<div><div class="k">Vurdering</div><div class="vv">'+f.value+'</div></div>'+
+              '<div><div class="k">Energimærke</div><div class="vv" style="color:var(--green)">'+(p.energyLabel||'–')+'</div></div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="card" style="width:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:10px">'+
+          ring(pct)+
+          '<div style="text-align:center"><div class="small" style="font-weight:500">Dokumenter behandlet</div><div class="small muted" style="margin-top:2px">'+processed+' af '+total+'</div></div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div><p class="section-label">Status</p><div class="stats">'+
+        '<div class="card stat"><div class="v">'+total+'</div><div class="l">Dokumenter</div></div>'+
+        '<div class="card stat"><div class="v" style="color:var(--green)">'+processed+'</div><div class="l">Behandlet</div></div>'+
+        '<div class="card stat"><div class="v" style="color:var(--warn)">'+pending+'</div><div class="l">Behandles</div></div>'+
+        '<div class="card stat"><div class="v" style="color:'+(p.verified?'var(--green)':'var(--n400)')+'">'+(p.verified?'Ja':'Nej')+'</div><div class="l">Verificeret ejer</div></div>'+
+      '</div></div>'+
+
+      '<div class="card" style="padding:8px 0">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px 8px">'+
+          '<p class="section-label" style="margin:0">Dokumenter</p>'+
+          '<button class="btn primary" onclick="upload(\''+p.id+'\')">Upload dokument</button>'+
+        '</div>'+docRows+
+      '</div>'+
+    '</div>';
+}
+
+async function upload(propId){
+  try{
+    const content = btoa('Demo dokument ' + new Date().toISOString());
+    const r = await fetch('/v1/properties/'+propId+'/documents', {
+      method:'POST',
+      headers: Object.assign({ 'Content-Type':'application/json', 'Idempotency-Key': (crypto.randomUUID?crypto.randomUUID():String(Date.now())) }, H()),
+      body: JSON.stringify({ filename: 'Upload_'+Date.now()+'.txt', contentBase64: content })
+    });
+    if(r.ok){ load(); setTimeout(load, 1000); } // vis pending, derefter behandlet
+  }catch(e){}
+}
+
+// Live status
+fetch('/health').then(r=>r.json()).then(d=>{
+  el('dot-db').className='dot '+(d.db==='up'?'up':'down');
+  el('dot-redis').className='dot '+(d.redis==='up'?'up':(d.redis==='disabled'?'':'down'));
+}).catch(()=>{ el('dot-db').className='dot down'; });
+
+renderAuthArea();
+if(token) load(); else renderLanding();
+</script>
+</body>
+</html>

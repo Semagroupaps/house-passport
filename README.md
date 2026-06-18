@@ -92,7 +92,8 @@ npm run start:dev                # API på :3000
 
 | Metode | Rute | Handling |
 |---|---|---|
-| GET  | / | Forside / visuel brugerflade (henter live data fra API'et) |
+| GET  | / | Forside (landing page) |
+| GET  | /app/ | Appen (henter live data fra API'et) |
 | POST | /v1/dev/session | Demo-session (kun DEMO_MODE) — opretter bruger + seedet bolig |
 | GET  | /health | Status for DB + Redis (til Coolify health check) |
 | GET  | /v1/properties | List boliger (RLS-filtreret) |

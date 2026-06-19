@@ -138,7 +138,15 @@ async function doCreate(){
   catch(e){ err.textContent='Kunne ikke oprette ('+e.message+').'; err.style.display='block'; }
 }
 async function refreshBbr(){
-  try{ await api('/v1/properties/'+S.cur+'/refresh-bbr',{ method:'POST' }); toast('Boligdata opdateret fra BBR.', true); viewOversigt(); }
+  try{
+    const r = await api('/v1/properties/'+S.cur+'/refresh-bbr',{ method:'POST' });
+    const b = (r && r.bbr) || {};
+    if(b.addressResolved===false){ toast('Kunne ikke sl\u00e5 adressen op i adresseregistret.', false); }
+    else if(b.buildingDataFetched){ toast('Boligdata opdateret fra BBR.', true); }
+    else if(b.configured){ toast('Adressen er opdateret, men BBR returnerede ingen bygningsdata for boligen.', true); }
+    else { toast('Adressen er opdateret. Bygningsdata (bygge\u00e5r, areal) kr\u00e6ver en Datafordeler-forbindelse.', true); }
+    viewOversigt();
+  }
   catch(e){ toast('Kunne ikke hente fra BBR ('+e.message+').', false); }
 }
 

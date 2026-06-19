@@ -5,14 +5,12 @@ import { DatafordelerClient } from './datafordeler.client';
 import { DarBfeResolver } from './dar-bfe.resolver';
 
 /**
- * Rigtigt BBR-/boligopslag på Datafordeleren.
- *
- * Primær vej: DAWA giver adgangsadressens id, som er det samme UUID, BBR bruger
- * som `husnummer`. Derfor slås bygningen direkte op med
- *   /BBR/BBRPublic/1/rest/bygning?Husnummer=<id>
- * Fallback: hvis husnummer ikke giver bygninger, slås grunden op via BFE
- *   (DAR -> BFE -> /rest/grund?BFEnummer=...) og dernæst bygninger på grundens UUID.
- *
+ * Rigtigt BBR-/boligopslag på Datafordeleren. Korrekt opslagskæde:
+ *   1) DAWA: adresse -> adgangsadressens id (= BBR husnummer-id)
+ *   2) DAR (offentlig): husnummerTilBygningBfe -> ejendommens BFE-nummer
+ *   3) BBR: grund?BFEnummer=<bfe> -> grundens UUID (id_lokalId)
+ *   4) BBR: bygning?Grund=<uuid>  -> bygningerne på grunden
+ * For "bygning på fremmed grund" slås bygning op direkte med BFEnummer.
  * Falder pænt tilbage, hvis et led mangler/fejler, så onboarding aldrig hård-fejler.
  */
 @Injectable()
@@ -31,7 +29,7 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
       const first = sug[0];
       if (!first) throw new Error('Adressen blev ikke fundet i DAWA');
       const resolved = await this.dawa.resolve(first.id);
-      const husnummerId = first.id; // = BBR's husnummer-reference
+      const husnummerId = first.id; // = BBR's husnummer-id
 
       let bbr: any = {};
       if (this.df.isConfigured()) {
@@ -51,6 +49,7 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
           y: resolved.y,
           areaM2: bbr.areaM2,
           husnummerId,
+          ...(bbr.bfe ? { bfe: bbr.bfe } : {}),
           ...(bbr.anvendelseskode ? { anvendelseskode: bbr.anvendelseskode } : {}),
           ...(bbr.raw ? { bbr: bbr.raw } : {}),
         },
@@ -61,23 +60,30 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
     }
   }
 
-  /** Henter bygningsdata fra BBR — primært via husnummer, ellers via BFE/grund. */
   private async fetchBbr(husnummerId: string): Promise<any> {
     try {
-      let buildings = await this.queryBygning({ Husnummer: husnummerId, status: '6' });
-      if (!buildings.length) {
-        this.logger.warn(`BBR: ingen bygninger (status=6) for husnummer ${husnummerId}; prøver uden status`);
-        buildings = await this.queryBygning({ Husnummer: husnummerId });
-      }
-      if (!buildings.length) {
-        this.logger.warn('BBR: husnummer gav 0 bygninger; prøver fallback via BFE/grund');
-        try { buildings = await this.fetchByGrundViaBfe(husnummerId); }
-        catch (e) { this.logger.warn('BBR grund-fallback fejlede: ' + String(e)); }
+      // 1) husnummer -> BFE (DAR, offentlig)
+      let bfe: string | undefined;
+      try { bfe = await this.dar.husnummerToBfe(husnummerId); }
+      catch (e) { this.logger.warn('DAR husnummerTilBygningBfe fejlede: ' + String(e)); }
+
+      let buildings: any[] = [];
+      if (bfe) {
+        // 2) BFE -> grundens UUID (BBR), 3) UUID -> bygninger (BBR)
+        const grundId = await this.grundUuidByBfe(bfe);
+        if (grundId) {
+          buildings = await this.queryBygning({ Grund: grundId, status: '6' });
+          if (!buildings.length) buildings = await this.queryBygning({ Grund: grundId });
+        } else {
+          // BFE kan være "bygning på fremmed grund" -> slå bygning op direkte på BFE
+          buildings = await this.queryBygning({ BFEnummer: bfe, status: '6' });
+          if (!buildings.length) buildings = await this.queryBygning({ BFEnummer: bfe });
+        }
       }
 
-      this.logger.log(`BBR: ${buildings.length} bygning(er) fundet for husnummer ${husnummerId}`);
+      this.logger.log(`BBR: ${buildings.length} bygning(er) (husnummer ${husnummerId}, BFE ${bfe ?? '-'})`);
       const b = this.pickMainBuilding(buildings);
-      if (!b) return {};
+      if (!b) return { bfe };
 
       const buildYear = b.byg026Opførelsesår != null ? Number(b.byg026Opførelsesår) : undefined;
       const areaM2 = b.byg038SamletBygningsareal != null ? Number(b.byg038SamletBygningsareal) : undefined;
@@ -85,6 +91,7 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
       this.logger.log(`BBR: valgte bygning byggeår=${buildYear} areal=${areaM2} anvendelse=${anvendelseskode}`);
 
       return {
+        bfe,
         buildYear,
         areaM2,
         anvendelseskode,
@@ -97,25 +104,30 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
     }
   }
 
-  /** Kalder bygning-tjenesten og normaliserer svaret til et array. */
-  private async queryBygning(params: Record<string, string>): Promise<any[]> {
-    const data: any = await this.df.getJson('/BBR/BBRPublic/1/rest/bygning', params);
+  /** BFE-nummer -> grundens UUID via BBR grund-tjenesten. */
+  private async grundUuidByBfe(bfe: string): Promise<string | undefined> {
+    let arr = await this.queryGrund({ BFEnummer: bfe, status: '6' });
+    if (!arr.length) arr = await this.queryGrund({ BFEnummer: bfe });
+    const g = arr.find((x: any) => x && (x.id_lokalId || x.id)) ?? arr[0];
+    const id = g?.id_lokalId ?? g?.id;
+    this.logger.log(`BBR: grund-UUID ${id ?? '-'} for BFE ${bfe}`);
+    return id ? String(id) : undefined;
+  }
+
+  private queryBygning(params: Record<string, string>): Promise<any[]> {
+    return this.queryList('/BBR/BBRPublic/1/rest/bygning', params);
+  }
+  private queryGrund(params: Record<string, string>): Promise<any[]> {
+    return this.queryList('/BBR/BBRPublic/1/rest/grund', params);
+  }
+
+  /** Kalder en BBR-tjeneste og normaliserer svaret til et array. */
+  private async queryList(path: string, params: Record<string, string>): Promise<any[]> {
+    const data: any = await this.df.getJson(path, params);
     if (Array.isArray(data)) return data.filter(Boolean);
     if (Array.isArray(data?.features)) return data.features.map((f: any) => f.properties ?? f).filter(Boolean);
     if (data && typeof data === 'object') return [data];
     return [];
-  }
-
-  /** Fallback: DAR -> BFE -> grund (UUID) -> bygninger på grunden. */
-  private async fetchByGrundViaBfe(husnummerId: string): Promise<any[]> {
-    const bfe = await this.dar.addressToBfe(husnummerId);
-    if (!bfe) return [];
-    const grundData: any = await this.df.getJson('/BBR/BBRPublic/1/rest/grund', { BFEnummer: bfe, status: '6' });
-    const grund = Array.isArray(grundData) ? grundData[0] : (grundData?.[0] ?? grundData);
-    const grundId = grund?.id_lokalId ?? grund?.id;
-    if (!grundId) return [];
-    this.logger.log(`BBR: grund ${grundId} via BFE ${bfe}`);
-    return this.queryBygning({ Grund: String(grundId), status: '6' });
   }
 
   /** Vælger den primære bygning: størst samlet areal blandt dem med et opførelsesår. */

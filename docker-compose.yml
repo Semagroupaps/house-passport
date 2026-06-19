@@ -40,7 +40,8 @@ services:
       # Admin bruges KUN til migrate + security.sql
       ADMIN_DATABASE_URL: postgresql://${POSTGRES_ADMIN_USER:-hp_admin}:${POSTGRES_ADMIN_PASSWORD:-hp_admin_pw}@db:5432/${POSTGRES_DB:-house_passport}?schema=public
       REDIS_URL: redis://redis:6379
-      DEMO_MODE: "${DEMO_MODE:-true}"   # demo-forside med live data; false i produktion
+      DEMO_MODE: "${DEMO_MODE:-false}"  # demo-seed; slået fra som standard
+      JWT_SECRET: "${JWT_SECRET:-skift-mig-i-produktion}"
       PORT: 3000
     ports:
       - "3000:3000"

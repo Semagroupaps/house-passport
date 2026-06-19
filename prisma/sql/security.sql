@@ -133,6 +133,23 @@ CREATE POLICY document_insert ON document FOR INSERT WITH CHECK ( can_write_docu
 CREATE POLICY document_update ON document FOR UPDATE
   USING ( can_write_document(property_id) ) WITH CHECK ( can_write_document(property_id) );
 
+-- MAINTENANCE_TASK + WARRANTY (boligdata — samme commons-mønster)
+ALTER TABLE maintenance_task ENABLE ROW LEVEL SECURITY; ALTER TABLE maintenance_task FORCE ROW LEVEL SECURITY;
+ALTER TABLE warranty         ENABLE ROW LEVEL SECURITY; ALTER TABLE warranty         FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS maint_select ON maintenance_task;
+DROP POLICY IF EXISTS maint_insert ON maintenance_task;
+DROP POLICY IF EXISTS maint_update ON maintenance_task;
+CREATE POLICY maint_select ON maintenance_task FOR SELECT USING ( can_read_property(property_id) );
+CREATE POLICY maint_insert ON maintenance_task FOR INSERT WITH CHECK ( is_current_owner(property_id) );
+CREATE POLICY maint_update ON maintenance_task FOR UPDATE
+  USING ( is_current_owner(property_id) ) WITH CHECK ( is_current_owner(property_id) );
+
+DROP POLICY IF EXISTS warranty_select ON warranty;
+DROP POLICY IF EXISTS warranty_insert ON warranty;
+CREATE POLICY warranty_select ON warranty FOR SELECT USING ( can_read_property(property_id) );
+CREATE POLICY warranty_insert ON warranty FOR INSERT WITH CHECK ( is_current_owner(property_id) );
+
 -- ============================================================================
 -- 6) EMBEDDINGS (pgvector) — bevidst UDEN for Prisma (vector-typen kan ikke
 --    udtrykkes i schemaet; tilgås via raw SQL). Samme grant-RLS som dokumenter,
@@ -172,3 +189,10 @@ DROP POLICY IF EXISTS person_self_update ON person;
 CREATE POLICY person_self_select ON person FOR SELECT USING ( id = app_person() );
 CREATE POLICY person_self_update ON person FOR UPDATE
   USING ( id = app_person() ) WITH CHECK ( id = app_person() );
+
+-- ============================================================================
+-- PROPERTY_TRANSFER — tilgås kun via den betroede TransferService (admin-forbindelse).
+-- FORCE RLS uden policies => app-rollen (hp_app) nægtes adgang; admin bypasser.
+-- ============================================================================
+ALTER TABLE property_transfer ENABLE ROW LEVEL SECURITY;
+ALTER TABLE property_transfer FORCE ROW LEVEL SECURITY;

@@ -98,11 +98,21 @@ npm run start:dev                # API på :3000
 | GET  | /health | Status for DB + Redis (til Coolify health check) |
 | GET  | /v1/properties | List boliger (RLS-filtreret) |
 | POST | /v1/properties | Onboard bolig fra { "address": "..." } |
-| POST | /v1/properties/:id/verification/initiate | Start MitID-ejerverificering |
-| POST | /v1/properties/:id/verification/complete | Match mod register → sæt verificeret |
-| POST | /v1/properties/:id/transfer | Ejerskifte (kræver verificeret ejer) |
+| POST | /v1/properties/:id/verification/initiate | Start MitID-flow → { redirectUrl } |
+| GET  | /v1/auth/mitid/callback | MitID-broker callback → sætter verificeret |
+| POST | /v1/properties/:id/transfer | Tilbyd ejerskifte til en købers e-mail |
+| GET  | /v1/properties/:id/transfers | Sælgers afventende tilbud |
+| GET  | /v1/transfers/incoming | Tilbud rettet til mig (køber) |
+| POST | /v1/transfers/:id/accept | Køber accepterer → atomisk overdragelse |
+| POST | /v1/transfers/:id/cancel | Sælger annullerer tilbud |
+| GET/POST | /v1/properties/:id/shares | Vis/giv adgang (deling via AccessGrant) |
+| DELETE | /v1/properties/:id/shares/:grantId | Fjern adgang |
 | POST | /v1/properties/:id/documents | Upload (+ Idempotency-Key) → 202 |
 | GET  | /v1/properties/:id/documents/:docId/status | Behandlingsstatus |
+| GET  | /v1/properties/:id/overview | Oversigt: score, dokumenter, opgaver, garantier, tidslinje |
+| GET/POST | /v1/properties/:id/tasks | Vedligeholdelsesopgaver (liste/opret) |
+| POST | /v1/properties/:id/tasks/:taskId/complete | Fuldfør opgave (gentager hvis interval) |
+| GET/POST | /v1/properties/:id/warranties | Garantier (liste/opret) |
 | DELETE | /v1/properties/:id/documents/:docId | GDPR-sletning via crypto-shredding |
 
 ```bash
@@ -157,8 +167,13 @@ Uanset om du deployer via Dockerfile eller Docker Compose, skal disse sættes i 
 |---|---|
 | `DATABASE_URL` | `postgresql://hp_app:hp_app_pw@<db-host>:5432/house_passport?schema=public` (appen — RLS) |
 | `ADMIN_DATABASE_URL` | admin/**superuser**-forbindelse — bruges til bootstrap (skema + RLS + rolle + extension) |
-| `REDIS_URL` | `redis://<redis-host>:6379` |
-| `DEMO_MODE` | `true` for live demo-forside (sæt `false` i produktion) |
+| `REDIS_URL` | Durabel Redis Streams-kø (ellers in-memory) —  `redis://<redis-host>:6379` |
+| `DEMO_MODE` | `false` i produktion (`true` seeder en demo-bolig) |
+| `JWT_SECRET` | Stærk, stabil hemmelighed til at signere login-tokens |
+| `S3_*` | S3-kompatibelt fil-lager (ellers in-memory) |
+| `KMS_MASTER_KEY` | Durabel envelope-KMS (kræves i prod for vedvarende dekryptering) |
+| `OPENAI_API_KEY` | AI-dokumentbehandling (ellers mock) |
+| `ADMIN_EMAILS` | Allowlist der bootstrapper admin-brugere (adgang til /admin/) |
 | `PORT` | `3000` |
 
 Containeren bootstrapper sig selv ved opstart (entrypoint): den kører `prisma db push`
@@ -204,8 +219,8 @@ svækkelse af tenant-isolationen gør pull requesten rød.
 
 ## Næste skridt mod produktion
 
-1. Rigtig auth (Clerk/Auth0 + MitID-broker) — erstat mock-login (sikkerhedskritisk).
-2. Rigtige adaptere: S3, SQS/EventBridge, OpenAI/Textract, BBR/Datafordeleren.
+1. ✓ Login (JWT) + ✓ MitID-ejerverificering (OIDC, authorization code + PKCE — simuleret uden broker, rigtig med Criipto/Signaturgruppen). Næste: JWKS-signaturverifikation af id_token, CPR-baseret ejer-match mod tinglysning.
+2. ✓ Fil-lagring (S3-kompatibel + durabel envelope-KMS) og ✓ AI-dokumentbehandling (OpenAI: OCR/klassificering/metadata/embeddings). ✓ PDF-tekstudtræk og ✓ semantisk søgning/“spørg dine dokumenter” (RAG). ✓ Ejerskifte ved salg (moaten): tilbud→accept, boligen overdrages med hele servicebogen, sælgers delinger lukkes, køber MitID-verificerer på ny. Resterende: audit-log, afventende invitationer, fuld AWS KMS, PDF-OCR for scannede sider, metrics/tracing.
 3. Audit-modul (append-only, hash-kæde) på tværs af alle skrivninger.
 4. Produktions-frontend (Next.js) wired mod API'et — prototypen i design/ som reference.
 5. ISO 27001/SOC 2-forberedelse forud for enterprise-salg.

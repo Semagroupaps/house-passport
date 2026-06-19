@@ -29,6 +29,9 @@ model Organization {
 model Person {
   id              String            @id @default(uuid()) @db.Uuid
   displayName     String?           @map("display_name")
+  email           String?           @unique
+  passwordHash    String?           @map("password_hash")
+  isAdmin         Boolean           @default(false) @map("is_admin")
   isMitidVerified Boolean           @default(false) @map("is_mitid_verified")
   createdAt       DateTime          @default(now()) @map("created_at")
   memberships     OrgMembership[]
@@ -62,6 +65,8 @@ model Property {
   ownerships   OwnershipPeriod[]
   grants       AccessGrant[]
   documents    Document[]
+  tasks        MaintenanceTask[]
+  warranties   Warranty[]
   @@map("property")
 }
 
@@ -119,4 +124,54 @@ model Document {
   property         Property @relation(fields: [propertyId], references: [id])
   @@index([propertyId])
   @@map("document")
+}
+
+/// Vedligeholdelsesopgave — knyttet til boligen. Driver vedligeholdelsesscoren.
+/// Kan være tilbagevendende (interval_months) — så genskabes næste forekomst,
+/// når en opgave markeres fuldført.
+model MaintenanceTask {
+  id             String    @id @default(uuid()) @db.Uuid
+  propertyId     String    @map("property_id") @db.Uuid
+  title          String
+  category       String?
+  status         String    @default("open") // 'open' | 'done'
+  priority       String    @default("normal") // 'low' | 'normal' | 'high'
+  dueDate        DateTime? @map("due_date") @db.Date
+  intervalMonths Int?      @map("interval_months")
+  completedAt    DateTime? @map("completed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  property       Property  @relation(fields: [propertyId], references: [id])
+  @@index([propertyId])
+  @@map("maintenance_task")
+}
+
+/// Garanti — knyttet til boligen (og evt. et dokument). Driver "aktive garantier".
+model Warranty {
+  id         String    @id @default(uuid()) @db.Uuid
+  propertyId String    @map("property_id") @db.Uuid
+  title      String
+  provider   String?
+  category   String?
+  startDate  DateTime? @map("start_date") @db.Date
+  endDate    DateTime? @map("end_date") @db.Date
+  createdAt  DateTime  @default(now()) @map("created_at")
+  property   Property  @relation(fields: [propertyId], references: [id])
+  @@index([propertyId])
+  @@map("warranty")
+}
+
+model PropertyTransfer {
+  id           String    @id @default(uuid()) @db.Uuid
+  propertyId   String    @map("property_id") @db.Uuid
+  fromPersonId String    @map("from_person_id") @db.Uuid
+  toEmail      String    @map("to_email")
+  toPersonId   String?   @map("to_person_id") @db.Uuid
+  saleDate     DateTime  @map("sale_date") @db.Date
+  status       String    @default("pending") // pending | accepted | cancelled | superseded
+  createdAt    DateTime  @default(now()) @map("created_at")
+  completedAt  DateTime? @map("completed_at")
+  @@index([toPersonId])
+  @@index([toEmail])
+  @@index([propertyId])
+  @@map("property_transfer")
 }

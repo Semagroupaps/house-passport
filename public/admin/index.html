@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>House Passport — Admin</title>
+<style>
+  :root{--pine:#13402C;--moss:#1F6B49;--paper:#F6F4EF;--card:#fff;--ink:#1c2420;--muted:#6b756f;--line:#e4e2da;--danger:#a23b2d;--dangersoft:#f7ece9;--warnsoft:#f5efe0;--warn:#9a7b22}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5}
+  .bar{display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--pine);color:var(--paper)}
+  .bar b{font-weight:600;letter-spacing:.2px}
+  .bar .who{margin-left:auto;font-size:13px;opacity:.9}
+  .bar button{background:rgba(255,255,255,.14);color:var(--paper);border:0;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px}
+  .wrap{max-width:980px;margin:22px auto;padding:0 18px;display:flex;flex-direction:column;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  h2{font-size:15px;margin:0 0 12px;font-weight:600}
+  .muted{color:var(--muted)}.small{font-size:12.5px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .stat .n{font-size:22px;font-weight:600;color:var(--pine)}
+  .stat .l{font-size:12px;color:var(--muted)}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:0}
+  .grow{flex:1;min-width:0}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 11px;cursor:pointer;font-size:12.5px;color:var(--ink)}
+  .btn.primary{background:var(--pine);color:#fff;border-color:var(--pine)}
+  .btn.warn{background:var(--dangersoft);color:var(--danger);border-color:#eedcd7}
+  .chip{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;border:1px solid var(--line)}
+  .chip.bad{background:var(--dangersoft);color:var(--danger);border-color:#eedcd7}
+  .chip.ok{background:#e9f1ec;color:var(--moss);border-color:#d6e6dd}
+  input{padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;width:100%;font-family:inherit}
+  .login{max-width:380px;margin:8vh auto;padding:0 18px}
+  .err{color:var(--danger);background:var(--dangersoft);border:1px solid #eedcd7;border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:12px}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const el = (id) => document.getElementById(id);
+const esc = (s) => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const S = { token: localStorage.getItem('hp_admin_token') || null, me: null };
+function H(){ return S.token ? { Authorization: 'Bearer ' + S.token } : {}; }
+async function api(path, opts){
+  opts = opts || {}; opts.headers = Object.assign({}, H(), opts.headers || {});
+  const r = await fetch(path, opts);
+  if(!r.ok){ let m='HTTP '+r.status; try{ const t=await r.json(); m=Array.isArray(t.message)?t.message.join(', '):(t.message||m); }catch(e){} const err=new Error(m); err.status=r.status; throw err; }
+  const ct = r.headers.get('content-type')||''; return ct.includes('json') ? r.json() : r.text();
+}
+function fdate(s){ try{ return new Date(s).toLocaleString('da-DK'); }catch(e){ return s; } }
+
+function renderLogin(msg){
+  document.getElementById('root').innerHTML =
+    '<div class="login"><div class="card">'+
+      '<h2 style="font-size:18px">Admin · House Passport</h2>'+
+      '<div class="muted small" style="margin-bottom:16px">Log ind med en administratorkonto.</div>'+
+      (msg?'<div class="err">'+esc(msg)+'</div>':'')+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+
+        '<input id="email" type="email" placeholder="E-mail" autocomplete="username">'+
+        '<input id="pw" type="password" placeholder="Adgangskode" autocomplete="current-password" onkeydown="if(event.key===&#39;Enter&#39;)doLogin()">'+
+        '<button class="btn primary" style="padding:11px;justify-content:center" onclick="doLogin()">Log ind</button>'+
+      '</div></div></div>';
+  setTimeout(()=>{ var f=el('email'); if(f) f.focus(); },0);
+}
+async function doLogin(){
+  const email=(el('email').value||'').trim(), pw=el('pw').value||'';
+  if(!email||!pw) return;
+  try{
+    const r = await fetch('/v1/auth/login',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ email, password: pw }) });
+    if(!r.ok){ let m='Forkert e-mail eller adgangskode'; try{const t=await r.json(); m=t.message||m;}catch(e){} renderLogin(Array.isArray(m)?m.join(', '):m); return; }
+    const d = await r.json(); S.token=d.token; localStorage.setItem('hp_admin_token', S.token); boot();
+  }catch(e){ renderLogin(String(e.message||e)); }
+}
+function logout(){ S.token=null; localStorage.removeItem('hp_admin_token'); renderLogin(); }
+
+async function boot(){
+  try{ S.me = await api('/v1/admin/me'); }
+  catch(e){ if(e.status===403){ renderLogin('Denne konto har ikke administratoradgang.'); } else { renderLogin(); } return; }
+  renderDash(); loadAll();
+}
+
+function renderDash(){
+  document.getElementById('root').innerHTML =
+    '<div class="bar"><b>House Passport · Admin</b><span class="who">'+esc((S.me&&(S.me.name||S.me.email))||'')+'</span>'+
+      '<button onclick="loadAll()">Opdatér</button><button onclick="logout()">Log ud</button></div>'+
+    '<div class="wrap">'+
+      '<div class="card"><h2>Systemoverblik</h2><div id="overview" class="muted small">Indlæser…</div></div>'+
+      '<div class="card"><h2>Pipeline</h2><div id="pipeline" class="muted small">Indlæser…</div></div>'+
+      '<div class="card"><h2>Dead-letter <span class="muted small" id="deadcount"></span></h2><div id="dead" class="muted small">Indlæser…</div></div>'+
+      '<div class="card"><h2>Fejlede dokumenter</h2><div id="failed" class="muted small">Indlæser…</div></div>'+
+    '</div>';
+}
+async function loadAll(){ loadOverview(); loadPipeline(); loadDead(); loadFailed(); }
+
+async function loadOverview(){
+  try{ const o = await api('/v1/admin/overview');
+    const items=[['organizations','Organisationer'],['persons','Brugere'],['properties','Boliger'],['ownerships','Ejerskaber'],['grants','Delinger'],['documents','Dokumenter']];
+    el('overview').innerHTML='<div class="stats">'+items.map(([k,l])=>'<div class="stat"><div class="n">'+(o[k]??0)+'</div><div class="l">'+l+'</div></div>').join('')+'</div>';
+  }catch(e){ el('overview').innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
+}
+async function loadPipeline(){
+  try{ const p = await api('/v1/admin/pipeline');
+    const q=p.queue||{}, d=p.documents||{};
+    const qs=[['stream','I kø'],['pending','Ubehandlet'],['deadLetter','Dead-letter']].map(([k,l])=>'<div class="stat"><div class="n">'+(q[k]??0)+'</div><div class="l">'+l+'</div></div>').join('');
+    const order=['processed','pending','failed','deleting','deleted'];
+    const ds=order.filter(k=>d[k]!=null).map(k=>'<span class="chip '+(k==='failed'?'bad':(k==='processed'?'ok':''))+'">'+esc(k)+': '+d[k]+'</span>').join(' ');
+    el('pipeline').innerHTML='<div class="stats">'+qs+'</div><div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px">'+(ds||'<span class="muted">Ingen dokumenter endnu.</span>')+'</div>';
+  }catch(e){ el('pipeline').innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
+}
+async function loadDead(){
+  try{ const list = await api('/v1/admin/dead-letter');
+    el('deadcount').textContent = '· '+list.length;
+    if(!list.length){ el('dead').innerHTML='<span class="muted">Ingen beskeder i dead-letter.</span>'; return; }
+    el('dead').innerHTML = list.map(function(m){
+      var doc=''; try{ doc=(JSON.parse(m.payload||'{}').documentId)||''; }catch(e){}
+      return '<div class="row"><div class="grow"><div class="small"><code>'+esc(m.id)+'</code></div><div class="muted small">dokument '+esc(doc||'?')+(m.deliveries?(' · '+m.deliveries+' forsøg'):'')+'</div></div>'+
+        '<button class="btn" onclick="requeueDead(&#39;'+esc(m.id)+'&#39;)">Gen-kør</button>'+
+        '<button class="btn warn" onclick="discardDead(&#39;'+esc(m.id)+'&#39;)">Kassér</button></div>';
+    }).join('');
+  }catch(e){ el('dead').innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
+}
+async function requeueDead(id){ try{ await api('/v1/admin/dead-letter/'+encodeURIComponent(id)+'/requeue',{method:'POST'}); loadDead(); loadPipeline(); }catch(e){ alert(e.message); } }
+async function discardDead(id){ try{ await api('/v1/admin/dead-letter/'+encodeURIComponent(id)+'/discard',{method:'POST'}); loadDead(); }catch(e){ alert(e.message); } }
+
+async function loadFailed(){
+  try{ const list = await api('/v1/admin/documents?status=failed');
+    if(!list.length){ el('failed').innerHTML='<span class="muted">Ingen fejlede dokumenter.</span>'; return; }
+    el('failed').innerHTML = list.map(function(d){
+      return '<div class="row"><div class="grow"><div class="small" style="font-weight:500">'+esc(d.filename||'Dokument')+'</div>'+
+        '<div class="muted small">bolig '+esc(d.propertyId||'')+' · '+fdate(d.createdAt)+'</div></div>'+
+        '<button class="btn" onclick="retryDoc(&#39;'+esc(d.id)+'&#39;)">Prøv igen</button></div>';
+    }).join('');
+  }catch(e){ el('failed').innerHTML='<span class="err">'+esc(e.message)+'</span>'; }
+}
+async function retryDoc(id){ try{ await api('/v1/admin/documents/'+encodeURIComponent(id)+'/retry',{method:'POST'}); loadFailed(); loadPipeline(); }catch(e){ alert(e.message); } }
+
+if(S.token) boot(); else renderLogin();
+</script>
+</body>
+</html>

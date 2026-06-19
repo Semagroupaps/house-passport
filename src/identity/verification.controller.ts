@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { VerificationService } from './verification.service';
 import { AuthGuard } from '../common/auth.guard';
 import { currentContext } from '../tenant/tenant-context';
@@ -8,16 +8,9 @@ import { currentContext } from '../tenant/tenant-context';
 export class VerificationController {
   constructor(private readonly verification: VerificationService) {}
 
+  /** Starter MitID-ejerverificering. Returnerer { redirectUrl } til browseren. */
   @Post('initiate')
-  initiate() {
-    return this.verification.initiate();
-  }
-
-  @Post('complete')
-  complete(
-    @Param('propertyId') propertyId: string,
-    @Body() body: { brokerCode: string },
-  ) {
-    return this.verification.complete(currentContext(), propertyId, body.brokerCode);
+  initiate(@Param('propertyId') propertyId: string) {
+    return this.verification.initiate(currentContext(), propertyId);
   }
 }

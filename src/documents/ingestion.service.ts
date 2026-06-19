@@ -47,29 +47,40 @@ export class IngestionService implements OnModuleInit {
       const doc = await tx.document.findUnique({ where: { id: msg.documentId } });
       if (!doc || doc.processingStatus === 'processed') return; // idempotent
 
-      const blob = await this.storage.get(doc.s3Key);
-      const plaintext = await this.encryption.decrypt(blob, doc.encryptionKeyRef);
+      try {
+        const blob = await this.storage.get(doc.s3Key);
+        const plaintext = await this.encryption.decrypt(blob, doc.encryptionKeyRef);
 
-      const text = await this.ocr.extractText(plaintext);
-      const category = await this.classifier.classify(text);
-      const meta = await this.metadata.extract(text);
-      const vector = await this.embeddings.embed(text);
+        const text = await this.ocr.extractText(plaintext);
+        const category = await this.classifier.classify(text);
+        const meta = await this.metadata.extract(text);
+        const vector = await this.embeddings.embed(text);
 
-      // Embedding skrives via raw SQL (pgvector); RLS gælder via property_id.
-      await tx.$executeRawUnsafe(
-        `INSERT INTO document_chunk (document_id, property_id, chunk_index, chunk_text, embedding)
-         VALUES ($1, $2, 0, $3, $4::vector)`,
-        doc.id,
-        doc.propertyId,
-        text.slice(0, 2000),
-        `[${vector.join(',')}]`,
-      );
+        // Ryd evt. tidligere chunks, så genbehandling (retry) ikke dublerer.
+        await tx.$executeRawUnsafe(`DELETE FROM document_chunk WHERE document_id = $1`, doc.id);
 
-      await tx.document.update({
-        where: { id: doc.id },
-        data: { processingStatus: 'processed', category, aiMetadata: meta as any },
-      });
-      this.logger.log(`Dokument ${doc.id} behandlet -> ${category}`);
+        // Embedding skrives via raw SQL (pgvector); RLS gælder via property_id.
+        await tx.$executeRawUnsafe(
+          `INSERT INTO document_chunk (document_id, property_id, chunk_index, chunk_text, embedding)
+           VALUES ($1, $2, 0, $3, $4::vector)`,
+          doc.id,
+          doc.propertyId,
+          text.slice(0, 2000),
+          `[${vector.join(',')}]`,
+        );
+
+        await tx.document.update({
+          where: { id: doc.id },
+          data: { processingStatus: 'processed', category, aiMetadata: meta as any },
+        });
+        this.logger.log(`Dokument ${doc.id} behandlet -> ${category}`);
+      } catch (e) {
+        this.logger.error(`Behandling af dokument ${doc.id} fejlede: ${String(e)}`);
+        await tx.document.update({
+          where: { id: doc.id },
+          data: { processingStatus: 'failed', aiMetadata: { error: String(e) } as any },
+        });
+      }
     });
   }
 }

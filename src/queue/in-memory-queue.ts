@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { QueueAdapter } from './queue.interface';
+import { QueueAdapter, QueueStats, DeadLetterEntry } from './queue.interface';
 
 /**
  * Async in-memory kø. Leverer beskeder via setImmediate (afkoblet fra request).
@@ -26,4 +26,11 @@ export class InMemoryQueue implements QueueAdapter {
     hs.push(handler);
     this.handlers.set(topic, hs);
   }
+
+  async stats(): Promise<QueueStats> {
+    return { stream: 0, pending: 0, deadLetter: 0 };
+  }
+  async listDeadLetter(): Promise<DeadLetterEntry[]> { return []; }
+  async requeueDeadLetter(): Promise<boolean> { return false; }
+  async discardDeadLetter(): Promise<boolean> { return false; }
 }

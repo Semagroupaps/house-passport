@@ -5,8 +5,14 @@ import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './auth/auth.module';
 import { PropertiesModule } from './properties/properties.module';
 import { DocumentsModule } from './documents/documents.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
+import { WarrantiesModule } from './warranties/warranties.module';
 import { IdentityModule } from './identity/identity.module';
 import { HealthModule } from './health/health.module';
+import { SearchModule } from './search/search.module';
+import { AdminModule } from './admin/admin.module';
+import { SharingModule } from './sharing/sharing.module';
+import { TransferModule } from './transfer/transfer.module';
 import { DemoModule } from './demo/demo.module';
 import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
 
@@ -21,6 +27,12 @@ import { TenantContextMiddleware } from './tenant/tenant-context.middleware';
     AuthModule,
     PropertiesModule,
     DocumentsModule,
+    SearchModule,
+    AdminModule,
+    SharingModule,
+    TransferModule,
+    MaintenanceModule,
+    WarrantiesModule,
     IdentityModule,
     HealthModule,
     // Demo-session kun når DEMO_MODE=true (skal være false i produktion)

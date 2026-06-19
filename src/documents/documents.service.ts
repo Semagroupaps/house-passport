@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { TenantService } from '../tenant/tenant.service';
 import { TenantContext } from '../tenant/tenant-context';
@@ -68,6 +68,31 @@ export class DocumentsService {
       const doc = await tx.document.findUnique({ where: { id: documentId } });
       if (!doc) throw new NotFoundException();
       return { documentId: doc.id, status: doc.processingStatus, category: doc.category };
+    });
+  }
+
+  /**
+   * Genbehandl et fejlet (eller hængende) dokument: nulstil til pending og
+   * genudgiv på køen. Update'et fejler under RLS, hvis aktøren ikke har skriveadgang.
+   */
+  async retry(ctx: TenantContext, documentId: string) {
+    return this.tenant.withTenant(ctx, async (tx) => {
+      const doc = await tx.document.findUnique({ where: { id: documentId } });
+      if (!doc) throw new NotFoundException();
+      if (doc.processingStatus === 'deleted' || !doc.s3Key) {
+        throw new BadRequestException('Dokumentet er slettet og kan ikke genbehandles');
+      }
+      await tx.document.update({
+        where: { id: documentId },
+        data: { processingStatus: 'pending', aiMetadata: undefined },
+      });
+      await this.queue.publish(DOCUMENT_UPLOADED, {
+        documentId: doc.id,
+        propertyId: doc.propertyId,
+        actingPersonId: ctx.personId,
+        actingOrgId: ctx.orgId,
+      });
+      return { documentId, status: 'pending' };
     });
   }
 

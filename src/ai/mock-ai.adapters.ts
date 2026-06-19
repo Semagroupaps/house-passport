@@ -2,10 +2,15 @@ import { Injectable } from '@nestjs/common';
 import {
   OcrAdapter, DocumentClassifier, MetadataExtractor, EmbeddingAdapter,
 } from './ai.interface';
+import { extractPdfText } from './pdf-text';
 
 @Injectable()
 export class MockOcrAdapter implements OcrAdapter {
   async extractText(bytes: Buffer): Promise<string> {
+    if (bytes.subarray(0, 5).toString('latin1') === '%PDF-') {
+      const pdf = extractPdfText(bytes);
+      if (pdf && pdf.length > 20) return pdf.slice(0, 20000);
+    }
     // Placeholder: rigtig OCR (Textract/Tesseract) erstatter dette.
     const head = bytes.subarray(0, 200).toString('utf8').replace(/[^\x20-\x7eæøåÆØÅ\n]/g, ' ');
     return head.trim() || `[OCR-tekst for ${bytes.length} bytes]`;

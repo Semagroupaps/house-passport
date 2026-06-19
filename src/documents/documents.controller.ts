@@ -28,6 +28,11 @@ export class DocumentsController {
     return this.documents.getStatus(currentContext(), documentId);
   }
 
+  @Post(':documentId/retry')
+  retry(@Param('documentId') documentId: string) {
+    return this.documents.retry(currentContext(), documentId);
+  }
+
   @Delete(':documentId')
   shred(@Param('documentId') documentId: string) {
     return this.documents.shred(currentContext(), documentId);

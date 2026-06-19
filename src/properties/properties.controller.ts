@@ -18,14 +18,18 @@ export class PropertiesController {
     return this.properties.createFromAddress(currentContext(), body.address);
   }
 
-  @Post(':id/transfer')
-  transfer(@Param('id') id: string, @Body() body: { saleDate?: string }) {
-    const date = body.saleDate ? new Date(body.saleDate) : new Date();
-    return this.properties.transfer(currentContext(), id, date);
-  }
-
   @Get(':id/documents')
   documents(@Param('id') id: string) {
     return this.properties.listDocuments(currentContext(), id);
+  }
+
+  @Get(':id/overview')
+  overview(@Param('id') id: string) {
+    return this.properties.overview(currentContext(), id);
+  }
+
+  @Post(':id/refresh-bbr')
+  refreshBbr(@Param('id') id: string) {
+    return this.properties.refreshBbr(currentContext(), id);
   }
 }

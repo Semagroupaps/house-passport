@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantService } from '../tenant/tenant.service';
 import { TenantContext } from '../tenant/tenant-context';
 import { REGISTRY_ADAPTER, RegistryAdapter } from '../registry/registry.interface';
@@ -27,6 +27,81 @@ export class PropertiesService {
     return this.tenant.withTenant(ctx, (tx) =>
       tx.document.findMany({ where: { propertyId } }),
     );
+  }
+
+  /**
+   * Samlet oversigt for én bolig: beregnet vedligeholdelsesscore, dokument-status,
+   * opgaver, garantier og en tidslinje — alt i én RLS-scoped transaktion.
+   */
+  async overview(ctx: TenantContext, propertyId: string) {
+    return this.tenant.withTenant(ctx, async (tx) => {
+      const anyTx = tx as any;
+      const property = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!property) return null; // skjult af RLS eller findes ikke
+
+      const [docs, tasks, warranties, ownerships] = await Promise.all([
+        tx.document.findMany({ where: { propertyId }, orderBy: { createdAt: 'desc' } }),
+        anyTx.maintenanceTask.findMany({ where: { propertyId } }),
+        anyTx.warranty.findMany({ where: { propertyId } }),
+        tx.ownershipPeriod.findMany({ where: { propertyId } }),
+      ]);
+
+      const now = Date.now();
+      const total = docs.length;
+      const processed = docs.filter((d: any) => d.processingStatus === 'processed').length;
+      const openTasks = tasks.filter((t: any) => t.status === 'open');
+      const overdue = openTasks.filter((t: any) => t.dueDate && new Date(t.dueDate).getTime() < now).length;
+      const upcoming = [...openTasks]
+        .sort((a: any, b: any) => (a.dueDate ? new Date(a.dueDate).getTime() : Infinity) - (b.dueDate ? new Date(b.dueDate).getTime() : Infinity))
+        .slice(0, 6);
+      const activeWarranties = warranties.filter((w: any) => !w.endDate || new Date(w.endDate).getTime() > now);
+      const mine = ownerships.find((o: any) => o.personId === ctx.personId && !o.validTo);
+      const verified = !!mine?.mitidVerified;
+
+      let score = 20;
+      score += verified ? 25 : 0;
+      score += Math.min(35, processed * 5);
+      score += Math.min(20, activeWarranties.length * 7);
+      score -= overdue * 8;
+      score = Math.max(0, Math.min(100, score));
+
+      const grade = total ? Math.round((processed / total) * 100) : 0;
+
+      const timeline = [
+        ...docs.map((d: any) => ({ type: 'document', label: `Dokument tilføjet: ${d.filename ?? 'Dokument'}`, date: d.createdAt })),
+        ...tasks.filter((t: any) => t.completedAt).map((t: any) => ({ type: 'task', label: `Opgave fuldført: ${t.title}`, date: t.completedAt })),
+        ...ownerships.map((o: any) => ({ type: 'ownership', label: o.validTo ? 'Ejerskab afsluttet' : 'Ejerskab registreret', date: o.validFrom })),
+      ]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 10);
+
+      return {
+        property: { ...property, verified },
+        score,
+        documents: { total, processed, pending: total - processed, grade },
+        tasks: { open: openTasks.length, overdue, upcoming },
+        warranties: { active: activeWarranties.length, items: warranties },
+        timeline,
+      };
+    });
+  }
+
+  /** Henter friske oplysninger fra BBR/registret på boligens adresse og opdaterer den. */
+  async refreshBbr(ctx: TenantContext, propertyId: string) {
+    return this.tenant.withTenant(ctx, async (tx) => {
+      const property = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!property) throw new NotFoundException();
+      const data = await this.registry.lookupByAddress(property.address);
+      return tx.property.update({
+        where: { id: propertyId },
+        data: {
+          energyLabel: data.energyLabel ?? property.energyLabel,
+          propertyType: data.propertyType ?? property.propertyType,
+          buildYear: data.buildYear ?? property.buildYear,
+          bbrSnapshot: data.bbrSnapshot as any,
+        },
+      });
+    });
   }
 
   /**
@@ -60,27 +135,4 @@ export class PropertiesService {
     });
   }
 
-  /**
-   * Ejerskifte (salg). Kræver at aktøren er den NUVÆRENDE og MitID-VERIFICEREDE
-   * ejer. Lukker ejerskabsperioden; boligen og dens transferable historik
-   * forbliver på boligen, så den nye ejer onboardes gratis (Trin 5.4 — moaten).
-   */
-  async transfer(ctx: TenantContext, propertyId: string, saleDate: Date) {
-    return this.tenant.withTenant(ctx, async (tx) => {
-      const op = await tx.ownershipPeriod.findFirst({
-        where: { propertyId, personId: ctx.personId as string, validTo: null },
-      });
-      if (!op) {
-        throw new ForbiddenException('Kun den nuværende ejer kan overdrage boligen');
-      }
-      if (!op.mitidVerified) {
-        throw new ForbiddenException('Ejerskab skal være MitID-verificeret før overdragelse');
-      }
-      await tx.ownershipPeriod.update({
-        where: { id: op.id },
-        data: { validTo: saleDate },
-      });
-      return { propertyId, transferredAt: saleDate };
-    });
-  }
 }

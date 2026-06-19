@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantService } from '../tenant/tenant.service';
 import { TenantContext } from '../tenant/tenant-context';
 import { REGISTRY_ADAPTER, RegistryAdapter } from '../registry/registry.interface';
@@ -122,6 +122,8 @@ export class PropertiesService {
           configured: source === 'datafordeler+dawa',
           buildingDataFetched,
           addressResolved: true,
+          note: snap.bbrNote,
+          bfe: snap.bfe,
         },
       };
     });
@@ -135,26 +137,72 @@ export class PropertiesService {
   async createFromAddress(ctx: TenantContext, address: string) {
     const data = await this.registry.lookupByAddress(address);
     return this.tenant.withTenant(ctx, async (tx) => {
-      const property = await tx.property.create({
-        data: {
-          bfeNumber: data.bfeNumber,
-          address: data.address,
-          energyLabel: data.energyLabel,
-          propertyType: data.propertyType,
-          buildYear: data.buildYear,
-          // JSON-blob fra registeret; Prisma's InputJsonValue er først tilgængelig efter generate
-          bbrSnapshot: data.bbrSnapshot as any,
-        },
-      });
-      await tx.ownershipPeriod.create({
-        data: {
-          propertyId: property.id,
-          personId: ctx.personId as string,
-          validFrom: new Date(),
-          mitidVerified: false,
-        },
-      });
-      return property;
+      // Idempotent: findes boligen allerede (og kan jeg se den = jeg ejer/har adgang),
+      // så returnér den i stedet for at fejle på det unikke BFE-nummer.
+      const existing = await tx.property.findUnique({ where: { bfeNumber: data.bfeNumber } });
+      if (existing) {
+        const owns = await tx.ownershipPeriod.findFirst({
+          where: { propertyId: existing.id, personId: ctx.personId as string, validTo: null },
+        });
+        if (!owns) {
+          await tx.ownershipPeriod.create({
+            data: { propertyId: existing.id, personId: ctx.personId as string, validFrom: new Date(), mitidVerified: false },
+          });
+        }
+        return existing;
+      }
+
+      try {
+        const property = await tx.property.create({
+          data: {
+            bfeNumber: data.bfeNumber,
+            address: data.address,
+            energyLabel: data.energyLabel,
+            propertyType: data.propertyType,
+            buildYear: data.buildYear,
+            bbrSnapshot: data.bbrSnapshot as any,
+          },
+        });
+        await tx.ownershipPeriod.create({
+          data: {
+            propertyId: property.id,
+            personId: ctx.personId as string,
+            validFrom: new Date(),
+            mitidVerified: false,
+          },
+        });
+        return property;
+      } catch (e: any) {
+        // P2002 = boligen findes allerede, men er registreret af en anden bruger.
+        if (e?.code === 'P2002') {
+          throw new ConflictException('Boligen er allerede registreret af en anden bruger.');
+        }
+        throw e;
+      }
+    });
+  }
+
+  /** Sletter en bolig og dens relaterede data. RLS sikrer, at kun ejeren kan se/slette. */
+  async deleteProperty(ctx: TenantContext, propertyId: string) {
+    return this.tenant.withTenant(ctx, async (tx) => {
+      const property = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!property) throw new NotFoundException();
+      // Fjern afhængige rækker først (ingen cascade i skemaet).
+      const docs = await tx.document.findMany({ where: { propertyId }, select: { id: true } });
+      if (docs.length) {
+        const ids = docs.map((d: any) => d.id);
+        await tx.$executeRawUnsafe(
+          `DELETE FROM document_chunk WHERE document_id = ANY($1::uuid[])`,
+          ids,
+        );
+      }
+      await tx.document.deleteMany({ where: { propertyId } });
+      await tx.maintenanceTask.deleteMany({ where: { propertyId } });
+      await tx.warranty.deleteMany({ where: { propertyId } });
+      await tx.accessGrant.deleteMany({ where: { propertyId } });
+      await tx.ownershipPeriod.deleteMany({ where: { propertyId } });
+      await tx.property.delete({ where: { id: propertyId } });
+      return { deleted: true, id: propertyId };
     });
   }
 

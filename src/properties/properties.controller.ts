@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { PropertiesService } from './properties.service';
 import { AuthGuard } from '../common/auth.guard';
 import { currentContext } from '../tenant/tenant-context';
@@ -31,5 +31,9 @@ export class PropertiesController {
   @Post(':id/refresh-bbr')
   refreshBbr(@Param('id') id: string) {
     return this.properties.refreshBbr(currentContext(), id);
+  }
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.properties.deleteProperty(currentContext(), id);
   }
 }

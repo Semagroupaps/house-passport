@@ -11,7 +11,7 @@ import { DarBfeResolver } from './dar-bfe.resolver';
  *   3) BBR: grund?BFEnummer=<bfe> -> grundens UUID (id_lokalId)
  *   4) BBR: bygning?Grund=<uuid>  -> bygningerne på grunden
  * For "bygning på fremmed grund" slås bygning op direkte med BFEnummer.
- * Falder pænt tilbage, hvis et led mangler/fejler, så onboarding aldrig hård-fejler.
+ * Sætter altid en `bbrNote`, der forklarer udfaldet (til ærlig UI-besked + fejlfinding).
  */
 @Injectable()
 export class DatafordelerBbrAdapter implements RegistryAdapter {
@@ -31,7 +31,7 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
       const resolved = await this.dawa.resolve(first.id);
       const husnummerId = first.id; // = BBR's husnummer-id
 
-      let bbr: any = {};
+      let bbr: any = { note: 'Datafordeler ikke forbundet' };
       if (this.df.isConfigured()) {
         bbr = await this.fetchBbr(husnummerId);
       }
@@ -50,6 +50,7 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
           areaM2: bbr.areaM2,
           husnummerId,
           ...(bbr.bfe ? { bfe: bbr.bfe } : {}),
+          ...(bbr.note ? { bbrNote: bbr.note } : {}),
           ...(bbr.anvendelseskode ? { anvendelseskode: bbr.anvendelseskode } : {}),
           ...(bbr.raw ? { bbr: bbr.raw } : {}),
         },
@@ -61,29 +62,54 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
   }
 
   private async fetchBbr(husnummerId: string): Promise<any> {
+    let note = '';
     try {
       // 1) husnummer -> BFE (DAR, offentlig)
       let bfe: string | undefined;
-      try { bfe = await this.dar.husnummerToBfe(husnummerId); }
-      catch (e) { this.logger.warn('DAR husnummerTilBygningBfe fejlede: ' + String(e)); }
+      try {
+        bfe = await this.dar.husnummerToBfe(husnummerId);
+      } catch (e) {
+        note = 'DAR-fejl: ' + this.errMsg(e);
+        this.logger.warn('DAR husnummerTilBygningBfe fejlede: ' + String(e));
+      }
+      if (!bfe && !note) note = 'DAR fandt intet BFE-nummer for adressen';
 
       let buildings: any[] = [];
       if (bfe) {
-        // 2) BFE -> grundens UUID (BBR), 3) UUID -> bygninger (BBR)
-        const grundId = await this.grundUuidByBfe(bfe);
+        // 2) BFE -> grundens UUID (BBR)
+        let grundId: string | undefined;
+        try {
+          grundId = await this.grundUuidByBfe(bfe);
+        } catch (e) {
+          note = 'BBR grund-fejl: ' + this.errMsg(e);
+          this.logger.warn('BBR grund fejlede: ' + String(e));
+        }
+        // 3) UUID -> bygninger (BBR); ellers prøv bygning direkte på BFE (fremmed grund)
         if (grundId) {
-          buildings = await this.queryBygning({ Grund: grundId, status: '6' });
-          if (!buildings.length) buildings = await this.queryBygning({ Grund: grundId });
-        } else {
-          // BFE kan være "bygning på fremmed grund" -> slå bygning op direkte på BFE
-          buildings = await this.queryBygning({ BFEnummer: bfe, status: '6' });
-          if (!buildings.length) buildings = await this.queryBygning({ BFEnummer: bfe });
+          try {
+            buildings = await this.queryBygning({ Grund: grundId, status: '6' });
+            if (!buildings.length) buildings = await this.queryBygning({ Grund: grundId });
+          } catch (e) {
+            note = 'BBR bygning-fejl: ' + this.errMsg(e);
+            this.logger.warn('BBR bygning fejlede: ' + String(e));
+          }
+        } else if (!note) {
+          try {
+            buildings = await this.queryBygning({ BFEnummer: bfe, status: '6' });
+            if (!buildings.length) buildings = await this.queryBygning({ BFEnummer: bfe });
+          } catch (e) {
+            note = 'BBR bygning-fejl: ' + this.errMsg(e);
+          }
+          if (!buildings.length && !note) note = 'BBR: ingen grund/bygning for BFE ' + bfe;
         }
       }
 
       this.logger.log(`BBR: ${buildings.length} bygning(er) (husnummer ${husnummerId}, BFE ${bfe ?? '-'})`);
       const b = this.pickMainBuilding(buildings);
-      if (!b) return { bfe };
+      if (!b) {
+        if (!note) note = bfe ? `BBR: 0 bygninger for BFE ${bfe}` : 'Ingen bygningsdata';
+        return { bfe, note };
+      }
 
       const buildYear = b.byg026Opførelsesår != null ? Number(b.byg026Opførelsesår) : undefined;
       const areaM2 = b.byg038SamletBygningsareal != null ? Number(b.byg038SamletBygningsareal) : undefined;
@@ -97,10 +123,11 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
         anvendelseskode,
         propertyType: anvendelseskode ? this.anvendelse(anvendelseskode) : undefined,
         raw: b,
+        note: 'OK',
       };
     } catch (e) {
       this.logger.warn('BBR-opslag fejlede: ' + String(e));
-      return {};
+      return { note: note || 'Uventet fejl: ' + this.errMsg(e) };
     }
   }
 
@@ -121,7 +148,6 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
     return this.queryList('/BBR/BBRPublic/1/rest/grund', params);
   }
 
-  /** Kalder en BBR-tjeneste og normaliserer svaret til et array. */
   private async queryList(path: string, params: Record<string, string>): Promise<any[]> {
     const data: any = await this.df.getJson(path, params);
     if (Array.isArray(data)) return data.filter(Boolean);
@@ -130,7 +156,6 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
     return [];
   }
 
-  /** Vælger den primære bygning: størst samlet areal blandt dem med et opførelsesår. */
   private pickMainBuilding(buildings: any[]): any | undefined {
     const withYear = buildings.filter((b) => b && b.byg026Opførelsesår != null);
     const pool = withYear.length ? withYear : buildings.filter(Boolean);
@@ -140,7 +165,11 @@ export class DatafordelerBbrAdapter implements RegistryAdapter {
     )[0];
   }
 
-  /** Konservativ oversættelse af de mest almindelige BBR-anvendelseskoder. */
+  private errMsg(e: unknown): string {
+    const s = e instanceof Error ? e.message : String(e);
+    return s.length > 160 ? s.slice(0, 160) : s;
+  }
+
   private anvendelse(code: string): string {
     const m: Record<string, string> = {
       '110': 'Stuehus til landbrug',

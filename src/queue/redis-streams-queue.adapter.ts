@@ -32,6 +32,9 @@ export class RedisStreamsQueueAdapter implements QueueAdapter, OnModuleDestroy {
     const url = process.env.REDIS_URL as string;
     this.client = new Redis(url, { maxRetriesPerRequest: null });
     this.blocking = this.client.duplicate();
+    // Uden 'error'-lytter ville et forbindelses-error-event vælte processen.
+    this.client.on('error', (e: any) => this.logger.warn('Redis-fejl (client): ' + (e?.message || e)));
+    this.blocking.on('error', (e: any) => this.logger.warn('Redis-fejl (blocking): ' + (e?.message || e)));
   }
 
   private streamKey(topic: string) { return `hp:stream:${topic}`; }

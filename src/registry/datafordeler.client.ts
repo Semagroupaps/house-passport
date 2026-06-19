@@ -19,13 +19,14 @@ export class DatafordelerClient {
   async getJson(path: string, params: Record<string, string | undefined>): Promise<any> {
     const u = new URL(this.base + path);
     u.searchParams.set('format', 'json');
-    // Ny, fremtidssikret metode: API-key i URL'en (Datafordeler Administration).
-    // Ellers den gamle tjenestebruger (brugernavn/adgangskode) — udfases ultimo 2026.
-    if (this.apiKey) {
+    // Tjenestebruger (brugernavn/adgangskode) virker på Datafordelerens REST-webservices.
+    // API-key virker KUN på det nye GraphQL-endpoint, ikke på disse REST-tjenester —
+    // derfor foretrækkes brugernavn/adgangskode, når begge er sat.
+    if (this.user && this.pass) {
+      u.searchParams.set('username', this.user);
+      u.searchParams.set('password', this.pass);
+    } else if (this.apiKey) {
       u.searchParams.set('api-key', this.apiKey);
-    } else {
-      if (this.user) u.searchParams.set('username', this.user);
-      if (this.pass) u.searchParams.set('password', this.pass);
     }
     for (const [k, v] of Object.entries(params)) if (v != null) u.searchParams.set(k, String(v));
     const r = await fetch(u.toString());

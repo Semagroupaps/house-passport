@@ -92,7 +92,18 @@ export class PropertiesService {
       const property = await tx.property.findUnique({ where: { id: propertyId } });
       if (!property) throw new NotFoundException();
       const data = await this.registry.lookupByAddress(property.address);
-      return tx.property.update({
+      const snap: any = data.bbrSnapshot ?? {};
+      const source: string = snap.source ?? 'ukendt';
+
+      // Stub = adressen kunne ikke slås op (DAWA fejlede). Skriv ALDRIG fiktive data.
+      if (source === 'stub') {
+        return { id: property.id, bbr: { source, configured: false, buildingDataFetched: false, addressResolved: false } };
+      }
+
+      const buildingDataFetched =
+        data.buildYear != null || data.propertyType != null || snap.areaM2 != null;
+
+      const updated = await tx.property.update({
         where: { id: propertyId },
         data: {
           energyLabel: data.energyLabel ?? property.energyLabel,
@@ -101,6 +112,18 @@ export class PropertiesService {
           bbrSnapshot: data.bbrSnapshot as any,
         },
       });
+      return {
+        id: updated.id,
+        buildYear: updated.buildYear,
+        energyLabel: updated.energyLabel,
+        propertyType: updated.propertyType,
+        bbr: {
+          source,
+          configured: source === 'datafordeler+dawa',
+          buildingDataFetched,
+          addressResolved: true,
+        },
+      };
     });
   }
 
